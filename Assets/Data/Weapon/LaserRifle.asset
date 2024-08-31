@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe0c43a276b435e44a5261942657079d, type: 3}
+  m_Name: LaserRifle
+  m_EditorClassIdentifier: 
+  weaponName: Laser Rifle
+  value: 250
+  max_damage: 200
+  min_damage: 150
+  accuracy: 70
+  range: 16
+  durability: 50
+  armorPenetration: 0
+  armorShredding: 100
+  fatigueCost: 4
+  magazine_capacity: 8
+  weaponIcon: {fileID: -1102117707, guid: cd1f63d975169ed4cbf22bc8dd44c1fd, type: 3}
+  tags:
+  - Rifle

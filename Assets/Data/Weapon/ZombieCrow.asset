@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe0c43a276b435e44a5261942657079d, type: 3}
+  m_Name: ZombieCrow
+  m_EditorClassIdentifier: 
+  weaponName: ZombieCrow
+  value: 0
+  max_damage: 30
+  min_damage: 20
+  accuracy: 75
+  range: 1
+  durability: 20
+  armorPenetration: 0
+  armorShredding: 50
+  fatigueCost: 0
+  magazine_capacity: 0
+  weaponIcon: {fileID: 0}
+  tags:
+  - ZombieCrow
