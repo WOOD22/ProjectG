@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 public class IntegratedAIScript : MonoBehaviour
-{
+{/*
     public bool enableChase = true; // 추적 가능 여부 (on/off)
     public bool enableMoveToAttack = true; // 공격 가능한 위치로 이동 여부 (on/off)
     public bool enableAttack = true; // 공격 여부 (on/off)
@@ -27,19 +27,22 @@ public class IntegratedAIScript : MonoBehaviour
 
     public void StartTurn()
     {
-        unit.currentAP = unit.maxAP; // 턴 시작 시 AP를 회복
+        ResetAP();
 
-        // 매 턴마다 가장 가까운 적을 탐색하고 경로를 설정
         Unit closestEnemy = FindClosestEnemy();
-
         if (closestEnemy != null)
         {
             StartCoroutine(MoveAndAttack(closestEnemy));
         }
         else
         {
-            StartCoroutine(EndTurnWithDelay(1f)); // 목표가 없으면 턴 종료
+            EndTurnWithDelay(1f); // 목표가 없으면 턴 종료
         }
+    }
+
+    private void ResetAP()
+    {
+        unit.currentAP = unit.maxAP; // 턴 시작 시 AP를 회복
     }
 
     private Unit FindClosestEnemy()
@@ -47,9 +50,9 @@ public class IntegratedAIScript : MonoBehaviour
         Unit closestEnemy = null;
         float closestDistance = Mathf.Infinity;
 
-        string targetTag = unit.CompareTag("Ally") ? "Enemy" : "Ally"; // 자신의 태그에 따라 적군을 찾음
-
+        string targetTag = unit.CompareTag("Ally") ? "Enemy" : "Ally";
         Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, detectionRange);
+
         foreach (Collider2D collider in colliders)
         {
             if (collider.CompareTag(targetTag))
@@ -68,60 +71,31 @@ public class IntegratedAIScript : MonoBehaviour
 
     private IEnumerator MoveAndAttack(Unit target)
     {
-        bool hasMoved = false;  // 이동 여부를 추적하기 위한 플래그
-
-        // 이미 공격 가능한 위치에 있는지 확인
         if (!IsInAttackRange(target) && enableMoveToAttack)
         {
-            // 공격 가능한 위치가 아니라면 이동
             yield return StartCoroutine(MoveAlongAStarPath(target));
-            hasMoved = true;
         }
 
-        // 이동이 불가능했거나, 이동 후 사정거리 내에 적이 있는 경우 공격
-        if ((hasMoved || IsInAttackRange(target)) && enableAttack && unit.currentAP >= attackAPCost)
+        if (IsInAttackRange(target))
         {
             yield return StartCoroutine(Attack(target));
         }
 
-        // 공격 후 AP가 남아있으면 새로운 타겟을 찾아 계속 공격
-        while (unit.currentAP >= attackAPCost)
-        {
-            Unit newTarget = FindClosestEnemy();
-            if (newTarget != null && IsInAttackRange(newTarget))
-            {
-                yield return StartCoroutine(Attack(newTarget));
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        // 이동 및 공격 후 턴 종료
-        StartCoroutine(EndTurnWithDelay(1f));
+        EndTurnWithDelay(1f);
     }
 
     private bool IsInAttackRange(Unit target)
     {
-        if (unit.weapon.durability <= 0)
-        {
-            Debug.LogWarning($"{name} has no weapon equipped. Cannot check attack range.");
-            return false; // 무기가 없으면 공격할 수 없음
-        }
-
         return Vector3.Distance(transform.position, target.transform.position) <= unit.weapon.range;
     }
 
     private IEnumerator MoveAlongAStarPath(Unit target)
     {
-        if (!enableChase) yield break; // 추적 기능이 비활성화된 경우 이동하지 않음
+        if (!enableChase) yield break;
 
         HashSet<Vector3> walkableTiles = GetWalkableTiles(target);
-
-        // 유닛의 현재 위치를 타일 그리드에 맞춰 스냅
-        Vector3 startPos = new Vector3(Mathf.Round(transform.position.x), Mathf.Round(transform.position.y / TileYScale) * TileYScale, 0);
-        Vector3 targetPos = new Vector3(Mathf.Round(target.transform.position.x), Mathf.Round(target.transform.position.y / TileYScale) * TileYScale, 0);
+        Vector3 startPos = SnapToGrid(transform.position);
+        Vector3 targetPos = SnapToGrid(target.transform.position);
 
         if (!walkableTiles.Contains(startPos))
         {
@@ -129,61 +103,26 @@ public class IntegratedAIScript : MonoBehaviour
             yield break;
         }
 
-        // 목표 유닛을 포위할 수 있는 위치를 찾음 (목표 유닛 주변의 4방향 타일)
         List<Vector3> possibleTargetPositions = GetSurroundingTiles(targetPos, walkableTiles);
-
         if (possibleTargetPositions.Count == 0)
         {
             Debug.LogError("포위할 수 있는 위치가 없습니다.");
             yield break;
         }
 
-        // 가능한 포위 위치 중에서 가장 가까운 위치로 경로를 계산
-        List<Vector3> path = null;
-        float shortestDistance = Mathf.Infinity;
-        foreach (Vector3 pos in possibleTargetPositions)
-        {
-            List<Vector3> tempPath = AStarPathfinding.FindPath(startPos, pos, walkableTiles);
-            if (tempPath.Count > 0 && tempPath.Count < shortestDistance)
-            {
-                path = tempPath;
-                shortestDistance = tempPath.Count;
-            }
-        }
-
+        List<Vector3> path = FindShortestPath(startPos, possibleTargetPositions, walkableTiles);
         if (path == null || path.Count == 0)
         {
             Debug.LogWarning("포위할 수 있는 경로를 찾을 수 없습니다.");
             yield break;
         }
 
-        Debug.Log("포위할 수 있는 경로를 찾았습니다. 이동을 시작합니다.");
+        yield return MoveAlongPath(path);
+    }
 
-        foreach (Vector3 step in path)
-        {
-            if (unit.currentAP >= moveAPCost)
-            {
-                Vector3 newPosition = new Vector3(Mathf.Round(step.x), Mathf.Round(step.y / TileYScale) * TileYScale, 0);
-
-                Collider2D unitCollider = Physics2D.OverlapPoint(newPosition, unitLayerMask);
-                if (unitCollider != null && unitCollider.gameObject != this.gameObject)
-                {
-                    Debug.LogWarning("유닛이 있어 이동할 수 없습니다.");
-                    yield break;
-                }
-
-                transform.position = newPosition;
-                unit.currentAP -= moveAPCost;
-
-                Camera.main.transform.position = new Vector3(transform.position.x, transform.position.y, Camera.main.transform.position.z);
-
-                yield return new WaitForSeconds(0.2f); // 0.2초 대기
-            }
-            else
-            {
-                break;
-            }
-        }
+    private Vector3 SnapToGrid(Vector3 position)
+    {
+        return new Vector3(Mathf.Round(position.x), Mathf.Round(position.y / TileYScale) * TileYScale, 0);
     }
 
     private List<Vector3> GetSurroundingTiles(Vector3 targetPos, HashSet<Vector3> walkableTiles)
@@ -209,56 +148,79 @@ public class IntegratedAIScript : MonoBehaviour
         return surroundingTiles;
     }
 
-    private IEnumerator Attack(Unit target)
+    private List<Vector3> FindShortestPath(Vector3 startPos, List<Vector3> possibleTargetPositions, HashSet<Vector3> walkableTiles)
     {
-        // 유닛이 "ZombieCrow" 태그가 달린 무기를 가지고 있는지 확인
-        if (unit.weapon.durability > 0 && unit.weapon.tags.Contains("ZombieCrow"))
-        {
-            // ZombieClaw 공격 옵션 실행
-            ZombieClaw zombieClaw = new ZombieClaw();
+        List<Vector3> bestPath = null;
+        float shortestDistance = Mathf.Infinity;
 
-            // AP와 스태미나가 충분한지 확인
-            if (unit.currentAP >= 3 && unit.currentStamina >= 30)
+        foreach (Vector3 pos in possibleTargetPositions)
+        {
+            List<Vector3> tempPath = AStarPathfinding.FindPath(startPos, pos, walkableTiles);
+            if (tempPath.Count > 0 && tempPath.Count < shortestDistance)
             {
-                zombieClaw.Execute(unit, target, FindObjectOfType<AttackManager>());
+                bestPath = tempPath;
+                shortestDistance = tempPath.Count;
+            }
+        }
+
+        return bestPath;
+    }
+
+    private IEnumerator MoveAlongPath(List<Vector3> path)
+    {
+        foreach (Vector3 step in path)
+        {
+            if (unit.currentAP >= moveAPCost)
+            {
+                Vector3 newPosition = SnapToGrid(step);
+                Collider2D unitCollider = Physics2D.OverlapPoint(newPosition, unitLayerMask);
+
+                if (unitCollider != null && unitCollider.gameObject != this.gameObject)
+                {
+                    Debug.LogWarning("유닛이 있어 이동할 수 없습니다.");
+                    yield break;
+                }
+
+                transform.position = newPosition;
+                unit.currentAP -= moveAPCost;
+
+                Camera.main.transform.position = new Vector3(transform.position.x, transform.position.y, Camera.main.transform.position.z);
+                yield return new WaitForSeconds(0.2f);
             }
             else
             {
-                Debug.Log("AP 또는 스태미나가 부족하여 ZombieClaw 공격을 중단합니다.");
-                yield break; // 충분하지 않다면 루프 종료
+                break;
             }
+        }
+    }
+
+    private IEnumerator Attack(Unit target)
+    {
+        if (unit.weaponData != null && unit.weapon.tags.Contains("ZombieCrow"))
+        {
+            ZombieClaw zombieClaw = new ZombieClaw();
+            zombieClaw.Execute(unit, target, FindObjectOfType<AttackManager>());
         }
         else
         {
-            // 기존 공격 로직
-            while (unit.currentAP >= attackAPCost && unit.currentStamina >= 15) // 여기서 스태미나도 함께 확인
+            while (unit.currentAP >= attackAPCost)
             {
                 unit.currentAP -= attackAPCost;
-                unit.currentStamina -= 15; // 스태미나 소모
 
                 Debug.Log($"{name}이(가) {target.name}을(를) 공격했습니다!");
-
-                // 공격 처리
                 AttackManager attackManager = FindObjectOfType<AttackManager>();
                 if (attackManager != null)
                 {
                     attackManager.ProcessAttack(unit, target, 3, 20, 75);
                 }
 
-                yield return new WaitForSeconds(1f); // 1초 대기 후 다음 공격 시도
+                yield return new WaitForSeconds(1f);
 
                 if (target.currentHealth <= 0)
                 {
                     Debug.Log($"{target.name}이(가) 파괴되었습니다.");
                     break;
                 }
-            }
-
-            // AP나 스태미나가 부족한 경우 무한 루프 방지
-            if (unit.currentAP < attackAPCost || unit.currentStamina < 15)
-            {
-                Debug.Log("AP 또는 스태미나가 부족하여 공격을 중단합니다.");
-                yield break;
             }
         }
     }
@@ -267,31 +229,34 @@ public class IntegratedAIScript : MonoBehaviour
     {
         HashSet<Vector3> walkableTiles = new HashSet<Vector3>();
 
-        // 맵 전체를 스캔하여 타일 정보를 수집합니다.
         foreach (Collider2D tile in Physics2D.OverlapBoxAll(transform.position, new Vector2(100, 100 * TileYScale), 0, tileLayerMask))
         {
             if (tile != null)
             {
-                Vector3 tilePosition = new Vector3(Mathf.Round(tile.transform.position.x), Mathf.Round(tile.transform.position.y / TileYScale) * TileYScale, 0);
+                Vector3 tilePosition = SnapToGrid(tile.transform.position);
                 walkableTiles.Add(tilePosition);
             }
         }
 
-        // 현재 유닛을 제외한 모든 유닛을 장애물로 간주합니다.
         Collider2D[] unitColliders = Physics2D.OverlapBoxAll(transform.position, new Vector2(100, 100 * TileYScale), 0, unitLayerMask);
         foreach (Collider2D unitCollider in unitColliders)
         {
             if (unitCollider != null && unitCollider.gameObject != this.gameObject && unitCollider.gameObject != target.gameObject)
             {
-                Vector3 unitPosition = new Vector3(Mathf.Round(unitCollider.transform.position.x), Mathf.Round(unitCollider.transform.position.y / TileYScale) * TileYScale, 0);
-                walkableTiles.Remove(unitPosition); // 유닛의 위치를 장애물로 처리
+                Vector3 unitPosition = SnapToGrid(unitCollider.transform.position);
+                walkableTiles.Remove(unitPosition);
             }
         }
 
         return walkableTiles;
     }
 
-    private IEnumerator EndTurnWithDelay(float delay)
+    private void EndTurnWithDelay(float delay)
+    {
+        StartCoroutine(EndTurnAfterDelay(delay));
+    }
+
+    private IEnumerator EndTurnAfterDelay(float delay)
     {
         yield return new WaitForSeconds(delay);
         EndTurn();
@@ -303,7 +268,7 @@ public class IntegratedAIScript : MonoBehaviour
         TurnManager turnManager = FindObjectOfType<TurnManager>();
         if (turnManager != null)
         {
-            turnManager.EndTurn(); // 턴 매니저에 턴 종료를 알림
+            turnManager.EndTurn();
         }
-    }
+    }*/
 }
